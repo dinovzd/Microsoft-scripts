@@ -1,19 +1,17 @@
 # File paths for the output files
 $availableComputersFile = "C:\Users\cratis\Desktop\available_computers.csv"
-$errorFile = "C:\Users\cratis\Desktop\error.txt"
+$errorComputersFile = "C:\Users\cratis\Desktop\error_computers.csv"
 $allComputersFile = "C:\Users\cratis\Desktop\all_computers.csv"
 
-# Clear the content of the error file if it already exists
-Clear-Content -Path $errorFile -ErrorAction SilentlyContinue
-
-# Initialize an empty array to store the valid computer objects
+# Initialize arrays to store valid and error computer objects
 $validComputers = @()
+$errorComputers = @()
 
 # Gather the list of computers (using Get-ADComputer)
 $computers = Get-ADComputer -Filter {OperatingSystem -notLike '*server*'} -Properties Name, OperatingSystem, OperatingSystemVersion, LastLogon
 
 # Export all computers to all_computers.csv
-$computers | Select-Object Name, OperatingSystem, OperatingSystemVersion | Export-Csv -Path $allComputersFile -NoTypeInformation
+$computers | Select-Object Name, OperatingSystem, OperatingSystemVersion, LastLogon | Export-Csv -Path $allComputersFile -NoTypeInformation
 Write-Host "Exported all computers to $allComputersFile"
 
 # Define the threshold for the last logon as three months ago
@@ -53,7 +51,10 @@ foreach ($computer in $computers) {
     # Skip the computer if it has not logged on within the last three months
     if ($lastLogonDate -and $lastLogonDate -lt $threeMonthsAgo) {
         Write-Host "$($computer.Name) has not logged on in the last three months, skipping..."
-        Add-Content -Path $errorFile -Value "$($computer.Name) - Not logged on in the last 3 months"
+        $errorComputers += [PSCustomObject]@{
+            ComputerName = $computer.Name
+            Reason = "Not logged on in the last 3 months"
+        }
         continue
     }
 
@@ -100,14 +101,20 @@ foreach ($computer in $computers) {
                 $errorMessage = "Failed to retrieve information for $($computer.Name): $_"
             }
 
-            # Log errors to error.txt
-            Add-Content -Path $errorFile -Value $errorMessage
+            # Log errors to errorComputers array
+            $errorComputers += [PSCustomObject]@{
+                ComputerName = $computer.Name
+                Reason = $errorMessage
+            }
             Write-Warning $errorMessage
         }
     } else {
-        # If ping fails, display a warning and log it to error.txt
+        # If ping fails, log the computer to the errorComputers array
         $pingFailMessage = "$($computer.Name) is unreachable, skipping..."
-        Add-Content -Path $errorFile -Value $pingFailMessage
+        $errorComputers += [PSCustomObject]@{
+            ComputerName = $computer.Name
+            Reason = "Unreachable (Ping failed)"
+        }
         Write-Warning $pingFailMessage
     }
 }
@@ -118,4 +125,12 @@ if ($validComputers.Count -gt 0) {
     Write-Host "Exported valid computers to $availableComputersFile"
 } else {
     Write-Host "No valid computers found to export."
+}
+
+# Export the error computers to a CSV file
+if ($errorComputers.Count -gt 0) {
+    $errorComputers | Export-Csv -Path $errorComputersFile -NoTypeInformation
+    Write-Host "Exported error computers to $errorComputersFile"
+} else {
+    Write-Host "No error computers found to export."
 }
