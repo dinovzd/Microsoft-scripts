@@ -8,10 +8,10 @@ $validComputers = @()
 $errorComputers = @()
 
 # Gather the list of computers (using Get-ADComputer)
-$computers = Get-ADComputer -Filter {OperatingSystem -notLike '*server*'} -Properties Name, OperatingSystem, OperatingSystemVersion, LastLogon
+$computers = Get-ADComputer -Filter {OperatingSystem -notLike '*server*'} -Properties Name, OperatingSystem, OperatingSystemVersion, LastLogon, PasswordLastSet
 
 # Export all computers to all_computers.csv
-$computers | Select-Object Name, OperatingSystem, OperatingSystemVersion, LastLogon | Export-Csv -Path $allComputersFile -NoTypeInformation
+$computers | Select-Object Name, OperatingSystem, OperatingSystemVersion, PasswordLastSet | Export-Csv -Path $allComputersFile -NoTypeInformation
 Write-Host "Exported all computers to $allComputersFile"
 
 # Define the threshold for the last logon as three months ago
@@ -41,19 +41,20 @@ function Get-OfficeVersion {
 
 # Loop through each computer
 foreach ($computer in $computers) {
-    # Convert last logon from filetime if it's available
-    if ($computer.LastLogon) {
-        $lastLogonDate = [DateTime]::FromFileTime($computer.LastLogon)
+    # Check PasswordLastSet date
+    if ($computer.PasswordLastSet) {
+        $passwordLastSetDate = $computer.PasswordLastSet
     } else {
-        $lastLogonDate = $null
+        $passwordLastSetDate = $null
     }
 
-    # Skip the computer if it has not logged on within the last three months
-    if ($lastLogonDate -and $lastLogonDate -lt $threeMonthsAgo) {
-        Write-Host "$($computer.Name) has not logged on in the last three months, skipping..."
+    # Skip the computer if the password has not been set in the last three months
+    if ($passwordLastSetDate -and $passwordLastSetDate -lt $threeMonthsAgo) {
+        Write-Host "$($computer.Name) has not had a password set in the last three months, skipping..."
         $errorComputers += [PSCustomObject]@{
             ComputerName = $computer.Name
-            Reason = "Not logged on in the last 3 months"
+            Reason = "Password not set in the last 3 months"
+            PasswordNotSetDate = $passwordLastSetDate
         }
         continue
     }
@@ -105,6 +106,7 @@ foreach ($computer in $computers) {
             $errorComputers += [PSCustomObject]@{
                 ComputerName = $computer.Name
                 Reason = $errorMessage
+                PasswordNotSetDate = $passwordLastSetDate
             }
             Write-Warning $errorMessage
         }
@@ -114,6 +116,7 @@ foreach ($computer in $computers) {
         $errorComputers += [PSCustomObject]@{
             ComputerName = $computer.Name
             Reason = "Unreachable (Ping failed)"
+            PasswordNotSetDate = $passwordLastSetDate
         }
         Write-Warning $pingFailMessage
     }
