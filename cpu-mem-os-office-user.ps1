@@ -1,6 +1,7 @@
 # File paths for the output files
 $availableComputersFile = "C:\Users\cratis\Desktop\available_computers.csv"
 $errorFile = "C:\Users\cratis\Desktop\error.txt"
+$allComputersFile = "C:\Users\cratis\Desktop\all_computers.csv"
 
 # Clear the content of the error file if it already exists
 Clear-Content -Path $errorFile -ErrorAction SilentlyContinue
@@ -10,6 +11,10 @@ $validComputers = @()
 
 # Gather the list of computers (using Get-ADComputer)
 $computers = Get-ADComputer -Filter {OperatingSystem -notLike '*server*'} -Properties Name, OperatingSystem, OperatingSystemVersion, LastLogon
+
+# Export all computers to all_computers.csv
+$computers | Select-Object Name, OperatingSystem, OperatingSystemVersion | Export-Csv -Path $allComputersFile -NoTypeInformation
+Write-Host "Exported all computers to $allComputersFile"
 
 # Define the threshold for the last logon as three months ago
 $threeMonthsAgo = (Get-Date).AddMonths(-3)
